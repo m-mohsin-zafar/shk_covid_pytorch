@@ -24,7 +24,7 @@ import networks
 #                                       Some Paths to be used
 # ------------------------------------------------------------------------------------
 dir_cwd = os.getcwd()
-dir_data_root = os.path.join(dir_cwd, 'data')
+dir_data_root = os.path.join(dir_cwd, 'data', 'covid_data')
 dir_checkpoint = os.path.join(dir_cwd, 'checkpoints')
 correct_labels = os.path.join(dir_cwd, 'labels.csv')
 
@@ -246,9 +246,8 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                             _, predicted = torch.max(outputs.data, 1)
                             correct_preds += (predicted == labels).sum().item()
 
-                            original_labels.append(labels)
-                            predicted_labels.append(predicted)
-
+                            original_labels += labels.data.cpu().numpy().tolist()
+                            predicted_labels += predicted.data.cpu().numpy().tolist()
                             pbar.update(images.shape[0])
 
                     else:
@@ -265,8 +264,9 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                         _, predicted = torch.max(outputs.data, 1)
                         correct_preds += (predicted == labels).sum().item()
 
-                        original_labels.append(labels)
-                        predicted_labels.append(predicted)
+                        original_labels += labels.data.cpu().numpy().tolist()
+                        predicted_labels += predicted.data.cpu().numpy().tolist()
+			
 
                         pbar.update(images.shape[0])
 
@@ -284,7 +284,7 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                     # ''')
                     writer.add_scalar('Loss/Train/Cross Entropy Loss', epoch_loss, (epoch + 1))
                     writer.add_scalar('Metrics/Train/Accuracy', epoch_acc, (epoch + 1))
-                    writer.add_pr_curve('Metrics/Train/PR-Curve', original_labels, predicted_labels, (epoch + 1))
+                    writer.add_pr_curve('Metrics/Train/PR-Curve', np.asarray(original_labels), np.asarray(predicted_labels), (epoch + 1))
                     writer.add_scalar('Metrics/Train/F1-Score', epoch_metrics['f1_score'], (epoch + 1))
                     writer.add_scalar('Metrics/Train/Precision', epoch_metrics['precision'], (epoch + 1))
                     writer.add_scalar('Metrics/Train/Recall', epoch_metrics['recall'], (epoch + 1))
@@ -294,7 +294,7 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                 elif phase == 'val':
                     writer.add_scalar('Loss/Validation/Cross Entropy Loss', epoch_loss, (epoch + 1))
                     writer.add_scalar('Metrics/Validation/Accuracy', epoch_acc, (epoch + 1))
-                    writer.add_pr_curve('Metrics/Validation/PR-Curve', original_labels, predicted_labels, (epoch + 1))
+                    writer.add_pr_curve('Metrics/Validation/PR-Curve', np.asarray(original_labels), np.asarray(predicted_labels), (epoch + 1))
                     writer.add_scalar('Metrics/Validation/F1-Score', epoch_metrics['f1_score'], (epoch + 1))
                     writer.add_scalar('Metrics/Validation/Precision', epoch_metrics['precision'], (epoch + 1))
                     writer.add_scalar('Metrics/Validation/Recall', epoch_metrics['recall'], (epoch + 1))
@@ -329,7 +329,7 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                 pass
             if (epoch + 1) % 5 == 0:
                 torch.save(model.state_dict(),
-                           os.path.join(dir_checkpoint, f'model1{epoch + 1}.pth'))
+                           os.path.join(dir_checkpoint, f'modelp6{epoch + 1}.pth'))
                 logging.info(f'Checkpoint {epoch + 1} saved !')
 
         end_time = time()
@@ -339,7 +339,7 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
 
     # Load n Save Best Model Weights
     model.load_state_dict(best_model_wts)
-    torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'model_best_weights' + '.pth'))
+    torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'modelp6_best_weights' + '.pth'))
 
     return train_epoch_loss, train_epoch_acc, train_epoch_metrics, val_epoch_loss, val_epoch_acc, val_epoch_metrics
 
@@ -351,7 +351,7 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
     logging.info(f'Using device {device}')
 
-    model = networks.ProposedCNNModel()
+    model = networks.ProposedCNNModelP6()
 
     # We may Load state from checkpoints if something goes wrong while training
 
@@ -373,7 +373,7 @@ if __name__ == '__main__':
             optim='sgd'
         )
     except KeyboardInterrupt:
-        torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'model_1_INTERRUPTED.pth'))
+        torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'modelp6_1_INTERRUPTED.pth'))
         logging.info('Saved interrupt')
         try:
             sys.exit(0)
