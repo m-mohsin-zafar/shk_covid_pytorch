@@ -13,12 +13,13 @@ import torch.nn as nn
 import utilities as utils
 from tqdm import tqdm
 
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
 from torch.utils.data import DataLoader
+
+from sklearn.model_selection import StratifiedKFold
 
 from datasets import CovidDataset
 import networks
+
 torch.cuda.current_device()
 
 # ------------------------------------------------------------------------------------
@@ -34,15 +35,70 @@ seed_val = 131
 
 
 # ------------------------------------------------------------------------------------
+#                           Perform Stratified KFold Cross Validation
+# ------------------------------------------------------------------------------------
+
+def perform_skfcv(model, device, inp_df, folds=5, epochs=10, batch_size=8, lr=0.1, save_cp=False, optim='adam',):
+    logging.info(f'''Performing {folds}folds Cross Validation''')
+    # store train/val history
+    train_losses = []
+    train_accuracies = []
+    train_metrics = []
+    val_losses = []
+    val_accuracies = []
+    val_metrics = []
+    skf = StratifiedKFold(n_splits=folds)
+    x = np.array(inp_df.x)
+    y = np.array(inp_df.y)
+    for train_index, test_index in skf.split(x, y):
+        X_train, X_test = x[train_index], x[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        tr = {
+            'x': X_train,
+            'y': y_train
+        }
+        ts = {
+            'x': X_test,
+            'y': y_test
+        }
+        tr_df = pd.DataFrame(tr)
+        ts_df = pd.DataFrame(ts)
+        train_epoch_loss, train_epoch_acc, train_epoch_metrics, val_epoch_loss, val_epoch_acc, val_epoch_metrics = train_net(
+            model=model,
+            device=device,
+            train_df=tr_df,
+            val_df=ts_df,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr,
+            save_cp=save_cp,
+            optim=optim
+        )
+        train_losses.append(train_epoch_loss)
+        train_accuracies.append(train_epoch_acc)
+        train_metrics.append(train_epoch_metrics)
+        val_losses.append(val_epoch_loss)
+        val_accuracies.append(val_epoch_acc)
+        val_metrics.append(val_epoch_metrics)
+
+    return train_losses, train_accuracies, train_metrics, val_losses, val_accuracies, val_metrics
+
+
+# ------------------------------------------------------------------------------------
 #                                       Training the Model
 # ------------------------------------------------------------------------------------
-def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, optim='adam'):
-    # First we read 'labels.csv' and construct input dataframe
-    inp_df = pd.read_csv(correct_labels)
-
-    # Now we get the stratified DataFrames for input to our Dataset Objects
-    train_df, val_df, _ = utils.get_stratified_train_val_test_sets(inp_df=inp_df, seed=seed_val)
-
+def train_net(
+        model,
+        device,
+        train_df,
+        val_df,
+        epochs=10,
+        batch_size=8,
+        lr=0.1,
+        save_cp=True,
+        optim='adam',
+        cv_runs=''
+):
     resize = (128, 128)
 
     # Now, let's build dataset objects
@@ -93,39 +149,22 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
         'criterion': criterion
     }
 
-    # Let's create a tensorboard object
-    writer = SummaryWriter(log_dir='runs/train_proposed_model_run1',
-                           comment=f'OPTIM_{optim}_LOSS_{criterion}_LR_{lr}_BATCH_SIZE_{batch_size}_IMG_SIZE_{resize}')
-    # Let's create a random input which may be passed to network and its depiction be displayed in tensorboard graph viz
-    ran_inp = torch.randn((2, 3, 128, 128), device=device)
-    writer.add_graph(model=model, input_to_model=ran_inp)
     optim_string = optimizer.__str__().replace("\n", ' ')
-    text = f'''
+
+    logging.info(f'''Starting training:
         Input Type:         Chest XRays - RGB Images
         Output Type;        0/1 - Classification
         Batch Norm:         True
         Activation:         ReLU
         Epochs:             {epochs}
-        Optimizer:          {optim_string}  
-        Learning Rate:      {lr} 
-        Train Batch Size:   {batch_size}
-        Val Batch Size:     4 
-        Loss Criterion:     {criterion.__repr__()}  
-        Weight Init:        Default 
-        '''
-    writer.add_text('Configurations', text, 1)
-    writer.flush()
-
-    logging.info(f'''Starting training:
-        Epochs:          {epochs}
-        Batch size:      {batch_size}
-        Optimizer:       {optim}
-        Learning rate:   {lr}
-        Training size:   {train_set.__len__()}
-        Validation size: {val_set.__len__()}
-        Checkpoints:     {save_cp}
-        Device:          {device.type}
-        Image Size:      {resize}
+        Batch size:         {batch_size}
+        Optimizer:          {optim_string}
+        Learning rate:      {lr}
+        Training size:      {train_set.__len__()}
+        Validation size:    {val_set.__len__()}
+        Checkpoints:        {save_cp}
+        Device:             {device.type}
+        Image Size:         {resize}
     ''')
 
     # store train/val loss history
@@ -222,33 +261,26 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                 if phase == 'train':
                     train_epoch_loss.append(epoch_loss)
                     train_epoch_acc.append(epoch_acc)
-                    # logging.info(f'''Train:
-                    #     CE:    {epoch_loss}
-                    # ''')
-                    writer.add_scalar('Loss/Train/Cross Entropy Loss', epoch_loss, (epoch + 1))
-                    writer.add_scalar('Metrics/Train/Accuracy', epoch_acc, (epoch + 1))
-                    writer.add_pr_curve('Metrics/Train/PR-Curve', np.asarray(original_labels),
-                                        np.asarray(predicted_labels), (epoch + 1))
-                    writer.add_scalar('Metrics/Train/F1-Score', epoch_metrics['f1_score'], (epoch + 1))
-                    writer.add_scalar('Metrics/Train/Precision', epoch_metrics['precision'], (epoch + 1))
-                    writer.add_scalar('Metrics/Train/Recall', epoch_metrics['recall'], (epoch + 1))
-                    writer.add_scalar('Metrics/Train/Specificity', epoch_metrics['specificity'], (epoch + 1))
-                    writer.add_scalar('Metrics/Train/Sensitivity', epoch_metrics['sensitivity'], (epoch + 1))
-                    writer.flush()
+                    logging.info(f'''Train:
+                        Cross Entropy Loss:     {epoch_loss}
+                        Epoch Accuracy:         {epoch_acc}
+                        F1-Score:               {epoch_metrics['f1_score']} 
+                        Precision:              {epoch_metrics['precision']}
+                        Recall:                 {epoch_metrics['recall']}
+                        Specificity:            {epoch_metrics['specificity']}
+                        Sensitivity:            {epoch_metrics['sensitivity']}
+                    ''')
                 elif phase == 'val':
-                    writer.add_scalar('Loss/Validation/Cross Entropy Loss', epoch_loss, (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/Accuracy', epoch_acc, (epoch + 1))
-                    writer.add_pr_curve('Metrics/Validation/PR-Curve', np.asarray(original_labels),
-                                        np.asarray(predicted_labels), (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/F1-Score', epoch_metrics['f1_score'], (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/Precision', epoch_metrics['precision'], (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/Recall', epoch_metrics['recall'], (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/Specificity', epoch_metrics['specificity'], (epoch + 1))
-                    writer.add_scalar('Metrics/Validation/Sensitivity', epoch_metrics['sensitivity'], (epoch + 1))
-                    # logging.info(f'''Validation:
-                    #     CE:    {epoch_loss}
-                    # ''')
-                    writer.flush()
+
+                    logging.info(f'''Validation:
+                                            Cross Entropy Loss:     {epoch_loss}
+                                            Epoch Accuracy:         {epoch_acc}
+                                            F1-Score:               {epoch_metrics['f1_score']} 
+                                            Precision:              {epoch_metrics['precision']}
+                                            Recall:                 {epoch_metrics['recall']}
+                                            Specificity:            {epoch_metrics['specificity']}
+                                            Sensitivity:            {epoch_metrics['sensitivity']}
+                                        ''')
                     val_epoch_loss.append(epoch_loss)
                     val_epoch_acc.append(epoch_acc)
                     if round(epoch_loss, 5) < prev_val_loss and round(epoch_acc, 5) > prev_val_acc and round(
@@ -257,13 +289,12 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                         prev_val_acc = epoch_acc
                         prev_val_f1 = epoch_metrics['f1_score']
                         best_model_wts = copy.deepcopy(model.state_dict())
-                        best_res = f'''
+                        best_res = f'''Best Results:
                                                     Val Loss:   {epoch_loss}
                                                     Accuracy:   {epoch_acc}
                                                     Metrics:    {epoch_metrics}
                                                 '''
-                        writer.add_text('Best Results', best_res, (epoch + 1))
-                        writer.flush()
+                        logging.info(best_res)
 
         if save_cp:
             try:
@@ -274,17 +305,15 @@ def train_net(model, device, epochs=10, batch_size=8, lr=0.1, save_cp=True, opti
                 pass
             if (epoch + 1) % 5 == 0:
                 torch.save(model.state_dict(),
-                           os.path.join(dir_checkpoint, f'modelp6{epoch + 1}.pth'))
+                           os.path.join(dir_checkpoint, f'{model.name}{epoch + 1}.pth'))
                 logging.info(f'Checkpoint {epoch + 1} saved !')
 
         end_time = time()
         logging.info('Epoch took time: {}'.format(str(end_time - start_time)))
 
-    writer.close()
-
     # Load n Save Best Model Weights
     model.load_state_dict(best_model_wts)
-    torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'modelp6_best_weights' + '.pth'))
+    torch.save(model.state_dict(), os.path.join(dir_checkpoint, f'{model.name}_{cv_runs}_best_weights.pth'))
 
     return train_epoch_loss, train_epoch_acc, train_epoch_metrics, val_epoch_loss, val_epoch_acc, val_epoch_metrics
 
@@ -308,10 +337,18 @@ if __name__ == '__main__':
     batch_size = 8
     learning_rate = 0.0001
 
+    # preparing for train and val sets
+    # First we read 'labels.csv' and construct input dataframe
+    inp_df = pd.read_csv(correct_labels)
+
+    # Now we get the stratified DataFrames for input to our Dataset Objects
+    train_df, val_df, _ = utils.get_stratified_train_val_test_sets(inp_df=inp_df, seed=seed_val)
     try:
         train_epoch_loss, train_epoch_acc, train_epoch_metrics, val_epoch_loss, val_epoch_acc, val_epoch_metrics = train_net(
             model=model,
             device=device,
+            train_df=train_df,
+            val_df=val_df,
             epochs=num_epochs,
             batch_size=batch_size,
             lr=learning_rate,
@@ -319,7 +356,7 @@ if __name__ == '__main__':
             optim='sgd'
         )
     except KeyboardInterrupt:
-        torch.save(model.state_dict(), os.path.join(dir_checkpoint, 'modelp6_1_INTERRUPTED.pth'))
+        torch.save(model.state_dict(), os.path.join(dir_checkpoint, f'{model.name}_INTERRUPTED.pth'))
         logging.info('Saved interrupt')
         try:
             sys.exit(0)

@@ -6,6 +6,7 @@ from torch.nn import AvgPool2d, Conv2d, Linear, Sequential, MaxPool2d, \
 class ProposedCNNModel(Module):
     def __init__(self, num_classes=2):
         super(ProposedCNNModel, self).__init__()
+        self.name = 'ProposedCNNModel'
         self.num_classes = num_classes
         self.layer_1 = Sequential(
             Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
@@ -66,6 +67,7 @@ class ProposedCNNModel(Module):
 class ProposedCNNModelP6(Module):
     def __init__(self, num_classes=2):
         super(ProposedCNNModelP6, self).__init__()
+        self.name = 'ProposedCNNModelP6'
         self.num_classes = num_classes
         self.layer_1 = Sequential(
             Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
