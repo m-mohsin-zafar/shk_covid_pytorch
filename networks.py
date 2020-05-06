@@ -3,94 +3,116 @@ from torch.nn import AvgPool2d, Conv2d, Linear, Sequential, MaxPool2d, \
     ReLU, Module, BatchNorm2d, Dropout, LocalResponseNorm
 
 
-class ProposedCNNModel(Module):
+class CustomVGG16(Module):
     def __init__(self, num_classes=2):
-        super(ProposedCNNModel, self).__init__()
-        self.name = 'ProposedCNNModel'
+        super(CustomVGG16, self).__init__()
+        self.name = 'CustomVGG16'
         self.num_classes = num_classes
-        self.layer_1 = Sequential(
+        self.conv_block_1 = Sequential(
             Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
+            BatchNorm2d(64),
+            ReLU(inplace=True),
+            Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1),
             BatchNorm2d(64),
             ReLU(inplace=True),
             MaxPool2d(kernel_size=2, stride=2)
         )
-        self.layer_2 = Sequential(
-            Conv2d(in_channels=64, out_channels=256, kernel_size=3, padding=1),
+        self.conv_block_2 = Sequential(
+            Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
+            BatchNorm2d(128),
+            ReLU(inplace=True),
+            Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1),
+            BatchNorm2d(128),
+            ReLU(inplace=True),
+            AvgPool2d(kernel_size=2, stride=2)
+        )
+        self.conv_block_3 = Sequential(
+            Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
             BatchNorm2d(256),
             ReLU(inplace=True),
-            MaxPool2d(kernel_size=2, stride=2)
-        )
-        self.layer_3 = Sequential(
+            Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
+            BatchNorm2d(256),
+            ReLU(inplace=True),
             Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
             BatchNorm2d(256),
             ReLU(inplace=True),
             MaxPool2d(kernel_size=2, stride=2)
         )
+        self.conv_block_4 = Sequential(
+            Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1),
+            BatchNorm2d(512),
+            ReLU(inplace=True),
+            Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
+            BatchNorm2d(512),
+            ReLU(inplace=True),
+            Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
+            BatchNorm2d(512),
+            ReLU(inplace=True),
+            MaxPool2d(kernel_size=2, stride=2)
+        )
+        self.pooling_layer = AvgPool2d(kernel_size=2, stride=2, padding=1)
+        self.fc_1 = Linear(5 * 5 * 512, 4096)
         self.dropout_1 = Sequential(
+            ReLU(inplace=True),
             Dropout(0.5)
         )
-        self.fc_1 = Linear(16 * 16 * 256, 4096)
+        self.fc_2 = Linear(4096, 64)
         self.dropout_2 = Sequential(
-            Dropout(0.2)
+            ReLU(inplace=True),
+            Dropout(0.5)
         )
-        self.fc_2 = Linear(4096, 256)
-        self.dropout_3 = Sequential(
-            Dropout(0.2)
-        )
-        self.fc_3 = Linear(256, 64)
-        self.dropout_4 = Sequential(
-            Dropout(0.2)
-        )
-        self.fc_4 = Linear(64, self.num_classes)
+        self.fc_3 = Linear(64, self.num_classes)
 
     def forward(self, x):
         # Shape = (Batch_size, 3, 128, 128)
-        out = self.layer_1(x)
+        out = self.conv_block_1(x)
         # Shape = (Batch_size, 64, 64, 64)
-        out = self.layer_2(out)
-        # Shape = (Batch_size, 256, 32, 32)
-        out = self.layer_3(out)
-        out = self.dropout_1(out)
+        out = self.conv_block_2(out)
+        # Shape = (Batch_size, 128, 32, 32)
+        out = self.conv_block_3(out)
         # Shape = (Batch_size, 256, 16, 16)
+        out = self.conv_block_4(out)
+        # Shape = (Batch_size, 512, 8, 8)
+        out = self.pooling_layer(out)
+        # Shape = (Batch_size, 512, 5, 5)
         out = out.reshape(out.size(0), -1)
-        # Shape = (Batch_size, 65536 = 256*16*16 )
+        # Shape = (Batch_size, 12,800 = 512*5*5 )
         out = self.fc_1(out)
-        out = self.dropout_2(out)
+        out = self.dropout_1(out)
         out = self.fc_2(out)
-        out = self.dropout_3(out)
+        out = self.dropout_2(out)
         out = self.fc_3(out)
-        out = self.dropout_4(out)
-        out = self.fc_4(out)
+
         return out
 
 
-class ProposedCNNModelP6(Module):
+class CovidRENet(Module):
     def __init__(self, num_classes=2):
-        super(ProposedCNNModelP6, self).__init__()
-        self.name = 'ProposedCNNModelP6'
+        super(CovidRENet, self).__init__()
+        self.name = 'CovidRENet'
         self.num_classes = num_classes
-        self.layer_1 = Sequential(
+        self.encoder_1 = Sequential(
             Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
             BatchNorm2d(64),
             ReLU(inplace=True),
             LocalResponseNorm(5),
             MaxPool2d(kernel_size=2, stride=2)
         )
-        self.layer_2 = Sequential(
+        self.encoder_2 = Sequential(
             Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
             BatchNorm2d(128),
             ReLU(inplace=True),
             LocalResponseNorm(5),
             AvgPool2d(kernel_size=2, stride=2)
         )
-        self.layer_3 = Sequential(
+        self.encoder_3 = Sequential(
             Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
             BatchNorm2d(256),
             ReLU(inplace=True),
             LocalResponseNorm(5),
             MaxPool2d(kernel_size=2, stride=2)
         )
-        self.layer_4 = Sequential(
+        self.encoder_4 = Sequential(
             Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
             BatchNorm2d(256),
             ReLU(inplace=True),
@@ -119,13 +141,13 @@ class ProposedCNNModelP6(Module):
 
     def forward(self, x):
         # Shape = (Batch_size, 3, 128, 128)
-        out = self.layer_1(x)
+        out = self.encoder_1(x)
         # Shape = (Batch_size, 64, 64, 64)
-        out = self.layer_2(out)
+        out = self.encoder_2(out)
         # Shape = (Batch_size, 128, 32, 32)
-        out = self.layer_3(out)
+        out = self.encoder_3(out)
         # Shape = (Batch_size, 256, 16, 16)
-        out = self.layer_4(out)
+        out = self.encoder_4(out)
         # Shape = (Batch_size, 256, 8, 8)
         out = self.dropout_1_n_relu(out)
         out = out.reshape(out.size(0), -1)
@@ -142,5 +164,5 @@ class ProposedCNNModelP6(Module):
 
 if __name__ == '__main__':
     inp = torch.randn(size=(2, 3, 128, 128))
-    model = ProposedCNNModelP6()
+    model = CustomVGG16()
     outp = model(inp)

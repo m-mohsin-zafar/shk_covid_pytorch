@@ -325,7 +325,7 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
     logging.info(f'Using device {device}')
 
-    model = networks.ProposedCNNModelP6()
+    model = networks.CovidRENet()
 
     # We may Load state from checkpoints if something goes wrong while training
     # ToDo Code Implementation 'Start Training from last checkpoint'
