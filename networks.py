@@ -48,10 +48,16 @@ class CustomVGG16(Module):
             Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
             BatchNorm2d(512),
             ReLU(inplace=True),
+            MaxPool2d(kernel_size=2, stride=2),
+            Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
+            BatchNorm2d(512),
+            ReLU(inplace=True),
+            Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
+            BatchNorm2d(512),
+            ReLU(inplace=True),
             MaxPool2d(kernel_size=2, stride=2)
         )
-        self.pooling_layer = AvgPool2d(kernel_size=2, stride=2, padding=1)
-        self.fc_1 = Linear(5 * 5 * 512, 4096)
+        self.fc_1 = Linear(4 * 4 * 512, 4096)
         self.dropout_1 = Sequential(
             ReLU(inplace=True),
             Dropout(0.5)
@@ -72,11 +78,9 @@ class CustomVGG16(Module):
         out = self.conv_block_3(out)
         # Shape = (Batch_size, 256, 16, 16)
         out = self.conv_block_4(out)
-        # Shape = (Batch_size, 512, 8, 8)
-        out = self.pooling_layer(out)
-        # Shape = (Batch_size, 512, 5, 5)
+        # Shape = (Batch_size, 512, 4, 4)
         out = out.reshape(out.size(0), -1)
-        # Shape = (Batch_size, 12,800 = 512*5*5 )
+        # Shape = (Batch_size, 8192 = 512*5*5 )
         out = self.fc_1(out)
         out = self.dropout_1(out)
         out = self.fc_2(out)
