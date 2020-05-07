@@ -325,7 +325,7 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
     logging.info(f'Using device {device}')
 
-    model = networks.CovidRENet()
+    model = networks.CustomVGG16()
 
     # We may Load state from checkpoints if something goes wrong while training
     # ToDo Code Implementation 'Start Training from last checkpoint'
@@ -352,7 +352,7 @@ if __name__ == '__main__':
             epochs=num_epochs,
             batch_size=batch_size,
             lr=learning_rate,
-            save_cp=True,
+            save_cp=False,
             optim='sgd'
         )
     except KeyboardInterrupt:
