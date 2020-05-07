@@ -26,3 +26,26 @@ class CovidDataset(Dataset):
             image = self.transformations(image)
 
         return img_name, image, img_label
+
+
+class InferenceDataset(Dataset):
+    def __init__(self, root, fnames, transformations=None):
+        self.img_names = [n for n in fnames]
+        self.img_paths = [os.path.join(root, f) for f in self.img_names]
+        self.transformations = transformations
+
+    def __len__(self):
+        count = len(self.img_names)
+        return count
+
+    def __getitem__(self, item):
+        img_name = self.img_names[item]
+        img_path = self.img_paths[item]
+
+        image = Image.open(img_path).convert('RGB')
+
+        if self.transformations is not None:
+            # Apply all transformations
+            image = self.transformations(image)
+
+        return img_name, image
